@@ -4,13 +4,13 @@ using UnityEngine;
 
 public class Coin : MonoBehaviour {
 
-	private CoinManager Money;
+	private MoneyManager Money;
 	private GameObject Player;
 	public int CoinValue;
 
 	// Use this for initialization
 	void Start () {
-		Money = GameObject.Find("CoinManager").GetComponent<CoinManager>();	
+		Money = GameObject.Find("MoneyManager").GetComponent<MoneyManager>();	
 		Player = GameObject.Find("Player");
 	}
 	
