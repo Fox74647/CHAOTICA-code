@@ -4,8 +4,9 @@ using UnityEngine;
 
 public class PlayerLevel : MonoBehaviour {
 
-	public int CurrentLevel, TotalExperience, MaxExperience;
+	public int CurrentLevel, TotalExperience;
 	XPLevels LevelSystem;
+	private int MaxExperience;
 
 
 	// Use this for initialization
