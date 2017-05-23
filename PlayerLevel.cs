@@ -4,27 +4,36 @@ using UnityEngine;
 
 public class PlayerLevel : MonoBehaviour {
 
+	/*
+	 * This script keeps track of the player's experience level and total experience 
+	 */
+
 	public int CurrentLevel, TotalExperience;
 	XPLevels LevelSystem;
 	private int MaxExperience;
 
-
-	// Use this for initialization
-	void Start () {
+	void Start ()
+	{
 		LevelSystem = GameObject.Find("LevelManager").GetComponent<XPLevels>();
 	}
-	
-	// Update is called once per frame
+
 	void Update () {
 		int temp = LevelSystem.Levels[0];
+
 		if (MaxExperience == 0)
 		{
 			for (int i = 0; i < 64; i++)
 			{
-				MaxExperience += LevelSystem.Levels[i];
+				MaxExperience += LevelSystem.Levels[i]; //calculate the maximum experience possible
 			}
 		}
-		if (TotalExperience >= MaxExperience)
+
+		if (TotalExperience > MaxExperience)
+		{
+			TotalExperience = MaxExperience;
+		}
+
+		if (TotalExperience == MaxExperience)
 		{
 			CurrentLevel = 64;
 		}
