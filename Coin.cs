@@ -8,14 +8,14 @@ public class Coin : MonoBehaviour {
 	private GameObject Player;
 	public int CoinValue;
 
-	// Use this for initialization
-	void Start () {
+	void Start ()
+	{
 		Money = GameObject.Find("MoneyManager").GetComponent<MoneyManager>();	
 		Player = GameObject.Find("Player");
 	}
-	
-	// Update is called once per frame
-	void Update () {
+
+	void Update ()
+	{
 		gameObject.transform.Rotate(0, 1, 0);
 
 		if (Vector3.Distance(Player.transform.position, gameObject.transform.position) <= 2)

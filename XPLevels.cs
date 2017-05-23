@@ -4,11 +4,15 @@ using UnityEngine;
 
 public class XPLevels : MonoBehaviour {
 
+	/*
+	 * This script calculates the 64 experience levels in the game.
+	 */
+
 	private int Lvls = 64, MinLvlXP = 1024, MaxLvlXP = 1048576;
 	public int[] Levels;
 
-	// Use this for initialization
-	void Start () {
+	void Start ()
+	{
 		Levels = new int[Lvls];
 		double B = Mathf.Log((float)MaxLvlXP / MinLvlXP) / (Lvls - 1);
 		double A = (float)MinLvlXP / (Mathf.Exp((float)B) - 1.0);
@@ -19,10 +23,5 @@ public class XPLevels : MonoBehaviour {
 			Levels[i-1] = (new_xp - old_xp);
 		}
 		Levels[63] = MaxLvlXP;
-	}
-	
-	// Update is called once per frame
-	void Update () {
-		
 	}
 }

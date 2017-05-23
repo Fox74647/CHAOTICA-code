@@ -5,21 +5,26 @@ using UnityEngine.UI;
 
 public class MoneyManager : MonoBehaviour {
 
-	public int Money, MoneyDifference;
-	public Image[] CoinCounterSegment;
-	public Sprite[] CoinCounterUI;
-
 	/*
 	 * This script manages the overall money the player has.
 	 * coin pickups should send a message to add to MoneyDifference.
-	 * shop items should check against money to see if they can be bought.
+	 * shop items should check against money to see if they can be bought when selected.
 	 * if they can, they should send a message to subtract from MoneyDifference.
 	 * 
 	 * THIS SCRIPT IS DESIGNED TO WORK WITH 7 IMAGES AND 16 SPRITES
 	 */
-	
-	// Update is called once per frame
-	void Update ()
+
+	public int Money, MoneyDifference;
+	public Image[] CoinCounterSegment;
+	public Sprite[] CoinCounterUI;
+    private AudioSource CoinCounterBeep;
+
+    private void Start()
+    {
+        CoinCounterBeep = gameObject.GetComponent<AudioSource>();
+    }
+
+    void Update ()
 	{
 		MoneyChanger();
 
@@ -61,24 +66,27 @@ public class MoneyManager : MonoBehaviour {
 		 * instead of instantly changing the money amount to the required value,
 		 * this system animates the counter. 
 		 */
-		int TempIncreaser = MoneyDifference/25;
+		int TempIncreaser = MoneyDifference/5;
 		if(TempIncreaser == 0)
 		{
 			if (MoneyDifference < 0)
 			{
+				CoinCounterBeep.Play();
 				Money--;
 				MoneyDifference++;
 			}
 			else if (MoneyDifference > 0)
 			{
+				CoinCounterBeep.Play();
 				Money++;
 				MoneyDifference--;
 			}
 		}
 		if (MoneyDifference != 0)
 		{
-			Money += TempIncreaser;
+            CoinCounterBeep.Play();
+            Money += TempIncreaser;
 			MoneyDifference -= TempIncreaser;
-		}
+        }
 	}
 }
