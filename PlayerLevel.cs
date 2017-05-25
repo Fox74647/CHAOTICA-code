@@ -8,31 +8,44 @@ public class PlayerLevel : MonoBehaviour {
 	 * This script keeps track of the player's experience level and total experience 
 	 */
 
-	public int CurrentLevel, TotalExperience;
-	XPLevels LevelSystem;
+	public int CurrentLevel, TotalExperience, XPDifference;
+	private XPLevels LevelSystem;
 	private int MaxExperience;
+    private AudioSource XPCounterBeep;
 
-	void Start ()
+    void Start ()
 	{
 		LevelSystem = GameObject.Find("LevelManager").GetComponent<XPLevels>();
-	}
+        XPCounterBeep = gameObject.GetComponent<AudioSource>();
+    }
 
 	void Update () {
-		int temp = LevelSystem.Levels[0];
 
-		if (MaxExperience == 0)
-		{
-			for (int i = 0; i < 64; i++)
-			{
-				MaxExperience += LevelSystem.Levels[i]; //calculate the maximum experience possible
-			}
-		}
+        XPChanger();
 
-		if (TotalExperience > MaxExperience)
+        //calculate the maximum experience possible
+        int temp = LevelSystem.Levels[0];
+        if (MaxExperience == 0)
+        {
+            for (int i = 0; i < 64; i++)
+            {
+                MaxExperience += LevelSystem.Levels[i]; 
+            }
+        }
+        //limits the XP to between 0 and the maximum value
+        if (TotalExperience < 0) 
+        {
+            TotalExperience = 0;
+            CurrentLevel = 0;
+            XPDifference = 0;
+        }
+        else if (TotalExperience > MaxExperience)
 		{
 			TotalExperience = MaxExperience;
+            XPDifference = 0;
 		}
 
+        //sets the correct experience level
 		if (TotalExperience == MaxExperience)
 		{
 			CurrentLevel = 64;
@@ -53,4 +66,33 @@ public class PlayerLevel : MonoBehaviour {
 			}
 		}
 	}
+    void XPChanger()
+    {
+        /*
+		 * instead of instantly changing the money amount to the required value,
+		 * this system animates the counter. 
+		 */
+        int TempIncreaser = XPDifference / 10;
+        if (TempIncreaser == 0)
+        {
+            if (XPDifference < 0)
+            {
+                XPCounterBeep.Play();
+                TotalExperience--;
+                XPDifference++;
+            }
+            else if (XPDifference > 0)
+            {
+                XPCounterBeep.Play();
+                TotalExperience++;
+                XPDifference--;
+            }
+        }
+        if (XPDifference != 0)
+        {
+            XPCounterBeep.Play();
+            TotalExperience += TempIncreaser;
+            XPDifference -= TempIncreaser;
+        }
+    }
 }
