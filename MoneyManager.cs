@@ -32,11 +32,13 @@ public class MoneyManager : MonoBehaviour {
 		if (Money < 0)
 		{
 			Money = 0;
-		}
+            MoneyDifference = 0;
+        }
 		else if (Money > 268435455)
 		{
 			Money = 268435455;
-		}
+            MoneyDifference = 0;
+        }
 
 		//updates each segment
 		for (int i = 0; i < 7; i++)
