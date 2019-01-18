@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -14,7 +14,6 @@ public class HexagonGridSnapping : MonoBehaviour
 	{
 		foreach (Transform child in transform)
 		{
-			//float modulus = child.transform.position.x % 1.0f;
 			float TargetX = Mathf.Round(child.transform.position.x * 2)/2;
 			float TargetZ = 0;
 			float Zoffset = Mathf.Sin(Mathf.Deg2Rad*60.0f);
