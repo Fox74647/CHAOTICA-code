@@ -1,34 +1,29 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
+using static StructsAndEnums;
+using static CharacterDetails;
+using static EnemyDetails;
+using static Inventory;
+using static GameController;
 
 public class BattleScript : MonoBehaviour
 {
-    private CharacterDetails Characters;
-    private EnemyDetails Enemies;
-    private Inventory PlayerInventory;
-
-    public CharacterDetails.Character[] CharacterParty;
-    public EnemyDetails.Enemy[] EnemyParty;
+    public CharacterClass[] CharacterParty;
+    public EnemyClass[] EnemyParty;
     public TeamStatusBar CharacterStatus, EnemyStatus;
-    private bool AttackingTeam = true, OptionSelected, CastSelected, AttackingCast;
-    private int OptionID = 0, CastID = 0;
+    private bool AttackingTeam = true, OptionSelected = false, CastSelected = false, AttackingCast, ItemSelected = false, AttackingItem;
+    private int OptionID = 0, CastID = 0, ItemIndex = 0;
     private float SelectDelay = 0.25f, AttackDelay = 1f;
     private int ActiveCharacter, ActiveEnemy, CharacterPartySize, EnemyPartySize, FriendlyTarget;
 
     public int[] EnemyPartyDetails;
-    public GameObject OptionSelectMarker, CastMenu, CastMenuText;
+    public GameObject OptionSelectMarker, CastMenu, ItemMenu, ModeUpWordCover;
     public ModeDisplay[] ModeDisplays;
     public DetailDisplay[] TextDisplays; //0th element is for active character, 1st is for enemy
-    public CastDisplay[] CastDisplays; //For the Cast Command
-    public bool CanFlee;
-
-    void Awake() //Runs before every other function
-    {
-        Characters = CharacterDetails.Details_Characters;
-        Enemies = EnemyDetails.Details_Enemy;
-        PlayerInventory = Inventory.PlayerInventory;
-    }
+    public CastDisplayManager CastDisplays; //For the Cast Command
+    public ItemDisplayManager ItemDisplays;
+    public bool CanFlee, CanLose;
+    public float AttackModifier, LuckModifier, ModeModifier, HealthModifier;
 
     void OnEnable() //Runs every time the battle screen is switched from disabled to enabled
     {
@@ -44,75 +39,72 @@ public class BattleScript : MonoBehaviour
         {
             ModeDisplays[i].NullModeDisplay();
         }
-    }
+    }   
 
     private void GrabPlayerParty() //Grabs all the characters for the fight
     {
-        CharacterPartySize = Mathf.Min(Characters.PartyDetails.Length, 4);
-        CharacterParty = new CharacterDetails.Character[CharacterPartySize];
+        CharacterPartySize = Mathf.Min(CharacterDetails_.PartyDetails.Length, 4);
+        CharacterParty = new CharacterClass[CharacterPartySize];
         for (int i = 0; i < CharacterPartySize; i++)
         {
-            CharacterParty[i] = Characters.GetCharacter(Characters.PartyDetails[i]);
-        }
-        for (int i = 0; i < CharacterPartySize; i++)
-        {
-            CharacterValueUpdate(i);
+            CharacterParty[i] = CharacterDetails_.GetCharacter(CharacterDetails_.PartyDetails[i]);
+            CharacterParty[i].ValueUpdate();
+            if (CharacterParty[i].Mode > GameController_.MaxMode)
+            {
+                CharacterParty[i].Mode = GameController_.MaxMode;
+            }
+            CharacterParty[i].HealthLimit();
         }
         CharacterStatus.SetTeamSize(CharacterPartySize);
-        HealthLimit();
+        
     }
     
     private void GrabEnemyParty() //Grabs all the enemies for the fight
     {
         EnemyPartySize = EnemyPartyDetails.Length;
-        EnemyParty = new EnemyDetails.Enemy[EnemyPartySize];
+        EnemyParty = new EnemyClass[EnemyPartySize];
         for (int i = 0; i < EnemyPartySize; i++)
         {
-            EnemyParty[i] = Enemies.GetEnemy(EnemyPartyDetails[i]);
+            EnemyParty[i] = EnemyDetails_.GetEnemy(EnemyPartyDetails[i]);
+            EnemyParty[i].ValueUpdate();
         }
         EnemyStatus.SetTeamSize(EnemyPartySize);
     }
 
     void Update()
     {
-        TestingFunction();
-
-        //check for dead team here
-        ShortenSelectDelay();
-        if (AttackingTeam)
+        if (DeadTeamCheck() == 0)
         {
-            if (!DeadCheck())
+            ShortenSelectDelay();
+            if (AttackingTeam)
             {
-                PartyAttack();
+                if (!DeadCheck() && !StatusHandler.Check(ref CharacterParty[ActiveCharacter].StatusList, StatusType.Sleep))
+                {
+                    PartyTurn();
+                }
             }
-        }
-        else
-        {
-            if (!DeadCheck())
+            else
             {
-                EnemyAttack();
+                if (!DeadCheck() && !StatusHandler.Check(ref EnemyParty[ActiveEnemy].StatusList, StatusType.Sleep))
+                {
+                    EnemyTurn();
+                }
             }
-            
+            TextDisplays[0].UpdatePlayerDisplay(CharacterParty[ActiveCharacter]);
+            TextDisplays[1].UpdateEnemyDisplay(EnemyParty[ActiveEnemy]);
+            DetailDisplayUpdate();
         }
-        TextDisplays[0].UpdatePlayerDisplay(CharacterParty[FriendlyTarget]);
-        TextDisplays[1].UpdateEnemyDisplay(EnemyParty[ActiveEnemy]);
-        DetailDisplayUpdate();
-    }
-
-    private void ShortenSelectDelay()
-    {
-        if (SelectDelay > 0)
+        else if (DeadTeamCheck() == 1) //player team wins
         {
-            SelectDelay -= Time.deltaTime;
+            BattleVictory();
+        }     
+        else //player team loses
+        {
+            BattleDefeat();
         }
     }
 
-    private void SelectDelayReset()
-    {
-        SelectDelay = 0.25f;
-    }
-
-    private void PartyAttack() //Player performs their actions here
+    private void PartyTurn() //Player performs their actions here
     {
         if (!OptionSelected)
         {
@@ -131,67 +123,24 @@ public class BattleScript : MonoBehaviour
                 }
                 case 1: //defend
                 {
-                    if (!CharacterParty[ActiveCharacter].DefenceIncreased)
-                    {
-                        CharacterParty[ActiveCharacter].DefenceIncreased = true;
-                        CharacterParty[ActiveCharacter].DefenceIncreaseValue = CharacterParty[ActiveCharacter].Defence;
-                        CharacterParty[ActiveCharacter].DefenceIncreaseLength = 1;
-                        CharacterParty[ActiveCharacter].Defence += CharacterParty[ActiveCharacter].DefenceIncreaseValue;
-                        AdvanceTurn(); 
-                    }               
+                    Defend();
                     break;
                 }
                 case 2: //cast
                 {
-                    CastMenu.SetActive(true);
-                    CastMenuText.SetActive(true);
-                    for (int i = 0; i < 3; i++)
-                    {
-                        if (i < CharacterParty[ActiveCharacter].Commands.Length)
-                        {
-                            CastDisplays[i].UpdateCastDisplay(CharacterParty[ActiveCharacter].Commands[i]);
-                        }
-                        else
-                        {
-                            CastDisplays[i].NullCastDisplay();
-                        }
-                    }
-                    if (!CastSelected)
-                    {
-                        CastSelect();
-                    }
-                    else
-                    {
-                        switch((int)CharacterParty[ActiveCharacter].Commands[CastID].CastType)
-                        {
-                            case 0: //attack
-                            {
-                                AttackSelect();
-                                break;
-                            }
-                            case 1: //heal
-                            case 2: //fortify
-                            {
-
-                                FriendlySelect();
-                                break;
-                            }
-                        }
-                    }
+                    Cast();
                     break;
                 }
                 case 3: //item
                 {
-                    OptionSelected = false; //allow the player to choose another option
-                    //while this isn't implemented, the player can't select this option
-                    //choose item
+                    Item();
                     break;
                 }
                 case 4: //flee
                 {
                     if (CanFlee)
                     {
-                        //flee
+                        Flee();
                     }
                     else
                     {
@@ -204,39 +153,19 @@ public class BattleScript : MonoBehaviour
         }
     }
 
-    private void EnemyAttack() //automatically attacks the player party at random
-    {
-        //this will be reworked later to include casting and defending
-
-        if (AttackDelay > 0)
-        {
-            AttackDelay -= Time.deltaTime;
-        }
-        else
-        {
-            ActiveCharacter = Random.Range(0, CharacterPartySize);
-            int DamageDealt = Mathf.Max((EnemyParty[ActiveEnemy].Attack - CharacterParty[ActiveCharacter].Defence), 0); 
-            CharacterParty[ActiveCharacter].CurrentHealth -= DamageDealt;
-            ModeDownCheck();
-            ModeBarUpdate();
-            AdvanceTurn(); 
-            AttackDelay = 1f;
-        }
-    }
-
     private void OptionSelect() //player selects an option from the left side
     {
         if (SelectDelay <= 0)
         {
             if (Input.GetAxis("Vertical") < 0 && OptionID < 4)
             {
-                OptionID ++;
+                OptionID++;
                 SelectDelay = 0.25f;
                 OptionSelectMarker.transform.position -= new Vector3(0, 32, 0); //distance between option marker positions is 32
             }
             else if (Input.GetAxis("Vertical") > 0 && OptionID > 0)
             {
-                OptionID --;
+                OptionID--;
                 SelectDelay = 0.25f;
                 OptionSelectMarker.transform.position += new Vector3(0, 32, 0);
             }
@@ -277,9 +206,76 @@ public class BattleScript : MonoBehaviour
             else if (Input.GetAxis("Submit") > 0)
             {  
                 SelectDelayReset();
-                if (EnemyParty[ActiveEnemy].CurrentHealth != 0)
+                if (EnemyParty[ActiveEnemy].CurrentHealth > 0)
                 {   
                     AttackEnemy();
+                }
+            }
+        }
+    }
+
+    private void Defend()
+    {
+        FortifyTarget(  ref CharacterParty[ActiveCharacter].DefenceBuffList,
+                        Defence.OneTurn(CharacterParty[ActiveCharacter].CurrentDefence));
+        StatusHandler.Add(ref CharacterParty[ActiveCharacter].StatusList, new Status(StatusType.DefenceUp, 1));
+        AdvanceTurn();
+    }
+
+    private void Cast()
+    {
+        CastMenuToggle(true);
+        CastDisplays.CastUpdate(ref CharacterParty[ActiveCharacter].Commands);
+        if (!CastSelected)
+        {
+            CastSelect();
+        }
+        else
+        {
+            switch((int)CharacterParty[ActiveCharacter].Commands[CastID].CastType)
+            {
+                case 0: //attack
+                {
+                    AttackSelect();
+                    break;
+                }
+                case 1: //heal
+                case 2: //fortify
+                {
+                    FriendlySelect();
+                    break;
+                }
+            }
+        }
+    }
+
+    private void CastSelect() //player selects an option from the left side
+    {
+        CastDisplays.ColourChange(CastID);
+        if (SelectDelay <= 0)
+        {
+           if (Input.GetAxis("Vertical") < 0 && CastID < CharacterParty[ActiveCharacter].Commands.Length-1)
+            {
+                SelectDelayReset();
+                CastID++;
+            }
+            else if (Input.GetAxis("Vertical") > 0 && CastID > 0)
+            {
+                SelectDelayReset();
+                CastID--;
+            }
+            else if (Input.GetAxis("Cancel") > 0)
+            {
+                SelectDelayReset();
+                OptionSelected = false;
+                CastMenuToggle(false);
+            }
+            else if (Input.GetAxis("Submit") > 0)
+            {
+                if (CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown == 0)
+                {
+                    SelectDelayReset();
+                    CastSelected = true;
                 }
             }
         }
@@ -319,62 +315,110 @@ public class BattleScript : MonoBehaviour
         }
     }
 
-    private void CastSelect() //player selects an option from the left side
+    private void Item()
     {
-        CastDisplayColourChange();
+        ItemMenuToggle(true);
+        if (!ItemSelected)
+        {
+            ItemSelect();
+        }
+    }
+
+    private void ItemSelect() //player selects an option from the left side
+    {
+        Debug.Log(ItemDisplays);
+        ItemDisplays.UpdateDisplay(ItemIndex, ref Inventory_.Items);
         if (SelectDelay <= 0)
         {
-           if (Input.GetAxis("Vertical") < 0 && CastID < CharacterParty[ActiveCharacter].Commands.Length-1)
+           if (Input.GetAxis("Vertical") < 0 && ItemIndex < Inventory_.Items.Count-1)
             {
                 SelectDelayReset();
-                CastID ++;
+                ItemIndex++;
             }
-            else if (Input.GetAxis("Vertical") > 0 && CastID > 0)
+            else if (Input.GetAxis("Vertical") > 0 && ItemIndex > 0)
             {
                 SelectDelayReset();
-                CastID --;
-            }
-            else if (Input.GetAxis("Submit") > 0)
-            {
-                if (CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown == 0)
-                {
-                    SelectDelayReset();
-                    CastSelected = true;
-                }
+                ItemIndex--;
             }
             else if (Input.GetAxis("Cancel") > 0)
             {
                 SelectDelayReset();
                 OptionSelected = false;
-                CastMenu.SetActive(false);
-                CastMenuText.SetActive(false);
+                ItemMenuToggle(false);
             }
+            else if (Input.GetAxis("Submit") > 0)
+            {
+                // if (CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown == 0)
+                // {
+                //     SelectDelayReset();
+                //     CastSelected = true;
+                // }
+            }
+        }
+    }
+
+    private void Flee()
+    {
+        OptionSelected = false; //allow the player to choose another option
+        //while this isn't implemented, the player can't select this option
+    }
+
+    private void ShortenSelectDelay()
+    {
+        if (SelectDelay > 0)
+        {
+            SelectDelay -= Time.deltaTime;
+        }
+    }
+
+    private void SelectDelayReset()
+    {
+        SelectDelay = 0.25f;
+    }
+
+    private void EnemyTurn() //automatically attacks the player party at random
+    {
+        //this will be reworked later to include casting and defending
+
+        if (AttackDelay > 0)
+        {
+            AttackDelay -= Time.deltaTime;
+        }
+        else
+        {
+            ActiveCharacter = Random.Range(0, CharacterPartySize);
+            int TotalDamage = TotalDamage = CalculateDamage(CharacterParty[ActiveCharacter].CurrentDefence, EnemyParty[ActiveEnemy].CurrentAttack, 0); 
+            AttackTarget(ref CharacterParty[ActiveCharacter].CurrentHealth, TotalDamage);
+            CharacterParty[ActiveCharacter].ModeDownCheck();
+            ModeBarUpdate();
+            AdvanceTurn(); 
+            AttackDelay = 1f;
         }
     }
 
     private void AttackEnemy()
     {
-        int DamageDealt = 0;
+        int TotalDamage = 0;
         if (OptionID == 2) //cast
         {
-            CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown = CharacterParty[ActiveCharacter].Commands[CastID].MaxCooldown;
-            DamageDealt = CharacterParty[ActiveCharacter].Commands[CastID].CastValue; //calculate the damage, ignoring defence
-            EnemyParty[ActiveEnemy].Status = AddStatus(EnemyParty[ActiveEnemy].Status, CharacterParty[ActiveCharacter].Commands[CastID].Status);
+            //casts bypass defence, but the values can't be influenced by attack.up or attack.down statuses
+            CastCooldown(ref CharacterParty[ActiveCharacter].Commands[CastID]);
+            StatusHandler.Add(ref EnemyParty[ActiveEnemy].StatusList, CharacterParty[ActiveCharacter].Commands[CastID].Status);
+            TotalDamage = CalculateDamage(EnemyParty[ActiveEnemy].CurrentDefence, CharacterParty[ActiveCharacter].Commands[CastID].CastValue, 0);
         }
         else //ordinary attack
         {
-            DamageDealt = Mathf.Max((CharacterParty[ActiveCharacter].CurrentAttack - EnemyParty[ActiveEnemy].Defence), 0); //calculate the damage
+            TotalDamage = CalculateDamage(EnemyParty[ActiveEnemy].CurrentDefence, CharacterParty[ActiveCharacter].CurrentAttack, CharacterParty[ActiveCharacter].CurrentLuck);
         }
-        EnemyParty[ActiveEnemy].CurrentHealth = Mathf.Max(EnemyParty[ActiveEnemy].CurrentHealth - DamageDealt, 0); //subtract damage from enemy
-        CharacterParty[ActiveCharacter].CurrentModeUp += DamageDealt; //add damage to character mode up
-        ModeUpCheck();
+        AttackTarget(ref EnemyParty[ActiveEnemy].CurrentHealth, TotalDamage);
+        AddModeUp(ref CharacterParty[ActiveCharacter].CurrentModeUp, ref CharacterParty[ActiveCharacter].StatusList, TotalDamage);
+        CharacterParty[ActiveCharacter].ModeUpCheck();
         ModeBarUpdate();
         AdvanceTurn();
     }
 
     private void HealFriend()
     {
-        
         //casts can't revive party members, certain items can, however
         if(CharacterParty[FriendlyTarget].CurrentHealth == 0)
         {
@@ -385,40 +429,25 @@ public class BattleScript : MonoBehaviour
         {
             if (OptionID == 2) //cast
             {
-                if (CharacterParty[ActiveCharacter].Commands[CastID].CastType == StructsAndEnums.CastType.Heal)
+                if (CharacterParty[ActiveCharacter].Commands[CastID].CastType == CastType.Heal)
                 {
-                    CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown = CharacterParty[ActiveCharacter].Commands[CastID].MaxCooldown;
-                    CharacterParty[FriendlyTarget].CurrentHealth += CharacterParty[ActiveCharacter].Commands[CastID].CastValue; //add health
-                    CharacterParty[FriendlyTarget].Status = AddStatus(CharacterParty[FriendlyTarget].Status, CharacterParty[ActiveCharacter].Commands[CastID].Status);
-                    HealthLimit();
+                    CastCooldown(ref CharacterParty[ActiveCharacter].Commands[CastID]);
+                    HealTarget(ref CharacterParty[FriendlyTarget].CurrentHealth, CharacterMaxHealth(FriendlyTarget), CharacterParty[ActiveCharacter].Commands[CastID].CastValue);
+                    StatusHandler.Add(ref CharacterParty[FriendlyTarget].StatusList, CharacterParty[ActiveCharacter].Commands[CastID].Status);
+                    CharacterParty[FriendlyTarget].ValueUpdate();
+                    CharacterParty[ActiveCharacter].HealthLimit();
                     ModeBarUpdate();
                     AdvanceTurn();
                 }
-                else if (CharacterParty[ActiveCharacter].Commands[CastID].CastType == StructsAndEnums.CastType.Fortify)
+                else if (CharacterParty[ActiveCharacter].Commands[CastID].CastType == CastType.Fortify)
                 {
-                    //rework to handle statuses
-                    // if (!CharacterParty[FriendlyTarget].DefenceIncreased)
-                    // {
-                    //     CharacterParty[ActiveCharacter].Commands[CastID].CurrentCooldown = CharacterParty[ActiveCharacter].Commands[CastID].MaxCooldown;
-                    //     CharacterParty[FriendlyTarget].DefenceIncreased = true;
-                    //     CharacterParty[FriendlyTarget].DefenceIncreaseValue = CharacterParty[ActiveCharacter].Commands[CastID].CastValue;
-                    //     CharacterParty[FriendlyTarget].DefenceIncreaseLength = CharacterParty[ActiveCharacter].Commands[CastID].StatusDuration;
-                    //     CharacterParty[FriendlyTarget].Defence += CharacterParty[FriendlyTarget].DefenceIncreaseValue;
-                    //     //handle statuses
-                    //     HealthLimit();
-                    //     ModeBarUpdate();
-                    //     AdvanceTurn();
-                    // }
+                    CastCooldown(ref CharacterParty[ActiveCharacter].Commands[CastID]);
+                    FortifyTarget(ref CharacterParty[FriendlyTarget].DefenceBuffList, new Defence(CharacterParty[ActiveCharacter].Commands[CastID].CastValue, CharacterParty[ActiveCharacter].Commands[CastID].Status.StatusDuration));
+                    StatusHandler.Add(ref CharacterParty[FriendlyTarget].StatusList, CharacterParty[ActiveCharacter].Commands[CastID].Status);
+                    CharacterParty[FriendlyTarget].ValueUpdate();
+                    AdvanceTurn();
                 }
             }
-        }
-    }
-
-    private void CastDisplayColourChange()
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            CastDisplays[i].ColourChange(i==CastID);
         }
     }
 
@@ -426,6 +455,9 @@ public class BattleScript : MonoBehaviour
     {
         if (AttackingTeam)
         {
+            PostActionInfliction(ref CharacterParty[ActiveCharacter].StatusList, ref CharacterParty[ActiveCharacter].CurrentHealth);
+            CharacterParty[ActiveCharacter].ModeDownCheck();
+            ModeBarUpdate();
             if (ActiveCharacter+1 == CharacterPartySize)
             {
                 SwapActiveTeam();
@@ -433,18 +465,22 @@ public class BattleScript : MonoBehaviour
             else
             {
                 ActiveCharacter++;
+                CharacterParty[ActiveCharacter].ValueUpdate();
+                CastCooldownDecrease(ref CharacterParty[ActiveCharacter].Commands);
+                StatusHandler.Decrease(ref CharacterParty[ActiveCharacter].StatusList);
             }
             OptionSelected = false;
             CastSelected = false;
-            CastMenu.SetActive(false);
-            CastMenuText.SetActive(false);
-            OptionSelectMarker.transform.position += new Vector3(0, 32*OptionID, 0);
+            CastMenuToggle(false);
+            ItemMenuToggle(false);
+            OptionSelectMarker.transform.position += new Vector3(0, 32*OptionID, 0); //moves the option select marker back to ATTACK
             OptionID = 0;
             CastID = 0;
-            
+            FriendlyTarget = ActiveCharacter;
         }
         else
         {
+            PostActionInfliction(ref EnemyParty[ActiveEnemy].StatusList, ref EnemyParty[ActiveEnemy].CurrentHealth);
             if (ActiveEnemy+1 == EnemyPartySize)
             {
                 SwapActiveTeam();
@@ -452,11 +488,12 @@ public class BattleScript : MonoBehaviour
             else
             {
                 ActiveEnemy++;
+                EnemyParty[ActiveEnemy].ValueUpdate();
+                CastCooldownDecrease(ref EnemyParty[ActiveEnemy].Commands);
+                StatusHandler.Decrease(ref EnemyParty[ActiveEnemy].StatusList);
             }
         }
-        CastRechargeDecrease();
         SelectDelayReset();
-        
         ModeBarUpdate();
     }
 
@@ -465,114 +502,64 @@ public class BattleScript : MonoBehaviour
         ActiveCharacter = 0;
         ActiveEnemy = 0;
         AttackingTeam = !AttackingTeam;
-    }
-
-    private void CastRechargeDecrease()
-    {
         if (AttackingTeam)
         {
-            for (int i = 0; i < CharacterParty[ActiveCharacter].Commands.Length; i++)
-            {
-                if (CharacterParty[ActiveCharacter].Commands[i].CurrentCooldown > 0)
-                {
-                    CharacterParty[ActiveCharacter].Commands[i].CurrentCooldown--;
-                }
-            }
+            CharacterParty[ActiveCharacter].ValueUpdate();
+            CastCooldownDecrease(ref CharacterParty[ActiveCharacter].Commands);
+            StatusHandler.Decrease(ref CharacterParty[ActiveCharacter].StatusList);
         }
         else
         {
-            for (int i = 0; i < EnemyParty[ActiveEnemy].Commands.Length; i++)
-            {
-                if (EnemyParty[ActiveEnemy].Commands[i].CurrentCooldown > 0)
-                {
-                    EnemyParty[ActiveEnemy].Commands[i].CurrentCooldown--;
-                }
-            }
+            EnemyParty[ActiveEnemy].ValueUpdate();
+            CastCooldownDecrease(ref EnemyParty[ActiveEnemy].Commands);
+            StatusHandler.Decrease(ref EnemyParty[ActiveEnemy].StatusList);
+            
         }
-
-        
     }
 
     private bool DeadCheck() //checks if the active character or enemy is dead
     {
-        if (AttackingTeam)
+        if (AttackingTeam && CharacterParty[ActiveCharacter].Mode == 0 && CharacterParty[ActiveCharacter].CurrentHealth == 0)
         {
-            if (CharacterParty[ActiveCharacter].Mode == 0 && CharacterParty[ActiveCharacter].CurrentHealth == 0)
-            {
-                AdvanceTurn();
-                return true;
-            }
+            AdvanceTurn();
+            return true;
         }
-        else
+        else if (!AttackingTeam && EnemyParty[ActiveEnemy].CurrentHealth == 0)
         {
-            if (EnemyParty[ActiveEnemy].CurrentHealth == 0)
-            {
-                AdvanceTurn();
-                return true;
-            }
+            AdvanceTurn();
+            return true;
         }
         return false;
     }
 
-    public void ModeUpCheck()
-	{
-		for (int i = 0; i < CharacterPartySize; i++)
-		{
-			if (CharacterParty[i].CurrentModeUp >= CharacterParty[i].BaseModeUp*((int)CharacterParty[i].Mode+1))
-			{
-				if ((int)CharacterParty[i].Mode < 7)
-				{
-					CharacterParty[i].CurrentModeUp = 0;
-					CharacterParty[i].Mode++;
-                    CharacterValueUpdate(i);
-					HealthReset(i);
-				}
-				else
-				{
-					CharacterParty[i].CurrentModeUp = CharacterParty[i].BaseModeUp*((int)CharacterParty[i].Mode+1);
-				}
-			}
-		}
-	}
-
-    public void ModeDownCheck()
-	{
-		for (int i = 0; i < CharacterPartySize; i++)
-		{
-			if (CharacterParty[i].CurrentHealth <= 0)
-			{
-                if (CharacterParty[i].Mode > 0)
-                {
-                    CharacterParty[i].CurrentModeUp = 0;
-                    CharacterParty[i].Mode--;
-                    CharacterValueUpdate(i);
-                    HealthReset(i);
-                }
-				else
-                {
-                    //sets mode up bar to 0, to prevent possible moding up while dead
-                    CharacterParty[i].CurrentModeUp = 0;
-				    CharacterParty[i].CurrentHealth = 0;
-                }
-			}
+    private int DeadTeamCheck()
+    {
+        int CharacterPartyHealth = 0, EnemyPartyHealth = 0;
+        for (int i = 0; i < CharacterPartySize; i++)
+        {
+            CharacterPartyHealth += CharacterParty[i].CurrentHealth + (int)CharacterParty[i].Mode;
+            //modes count as extra health for this calculation
+            //if the player party is at NETHER with 0 health, the result is 0.
         }
-	}
+        for (int i = 0; i < EnemyPartySize; i++)
+        {
+            EnemyPartyHealth += EnemyParty[i].CurrentHealth;
+        }
+        if (EnemyPartyHealth == 0)
+        {
+            return 1;
+        }
+        else if (CharacterPartyHealth == 0)
+        {
+            return 2;
+        }
+        return 0;
+    }
 
-    public void HealthReset(int CharacterID)
-	{
-		CharacterParty[CharacterID].CurrentHealth = (CharacterParty[CharacterID].BaseHealth/8)*(8-(int)CharacterParty[CharacterID].Mode);
-	}
-
-    public void HealthLimit()
-	{
-		for (int i = 0; i < CharacterPartySize; i++)
-		{
-			if (CharacterParty[i].CurrentHealth > (CharacterParty[i].BaseHealth/8)*(8-(int)CharacterParty[i].Mode))
-			{
-				HealthReset(i);
-			}
-		}
-	}
+    private int CharacterMaxHealth(int index)
+    {
+        return (CharacterParty[index].BaseHealth/8)*(8-(int)CharacterParty[index].Mode);
+    }
 
     private void ModeBarUpdate() //updates the mode bars
     {
@@ -585,7 +572,18 @@ public class BattleScript : MonoBehaviour
         for (int i = 0; i < CharacterPartySize; i++)
         {
             int ActiveChar = (i+(ActiveCharacter * Attacking)) % CharacterPartySize;
-            ModeDisplays[i].UpdateModeDisplay(CharacterParty[ActiveChar]);
+            ModeDisplays[i].UpdateModeDisplay(ref CharacterParty[ActiveChar]);
+            if (ActiveChar == 0)
+            {
+                if (CharacterParty[ActiveChar].Mode == GameController_.MaxMode)
+                {
+                    ModeUpWordCover.SetActive(true);
+                }
+                else if (CharacterParty[ActiveChar].Mode < GameController_.MaxMode)
+                {
+                    ModeUpWordCover.SetActive(false);
+                }
+            }
         } 
     }
 
@@ -598,91 +596,119 @@ public class BattleScript : MonoBehaviour
         EnemyStatus.StatusUpdate(EnemyParty);
     }
 
-    private void CharacterValueUpdate(int index)
-    {
-        CharacterParty[index].CurrentAttack = CharacterParty[index].BaseAttack * ((int)CharacterParty[index].Mode+1);
-        for (int i = 0; i < CharacterParty[index].Commands.Length; i++)
-        {
-            CharacterParty[index].Commands[i].CastValue = CharacterParty[index].Commands[i].CastBaseValue * ((int)CharacterParty[index].Mode+1);
-        } 
-    }
-
-    private List<StructsAndEnums.Status> AddStatus(List<StructsAndEnums.Status> list, StructsAndEnums.Status stat)
-    {
-        if (list.Count > 0)
-        {
-            for (int i = 0; i < list.Count; i++)
-            {
-                if (list[i].StatusType == stat.StatusType)
-                {
-                    stat.StatusDuration = Mathf.Min(stat.StatusDuration + list[i].StatusDuration, 9);
-                    list[i] = stat;
-                    return list;
-                }
-            }
-            if (stat.StatusType != StructsAndEnums.StatusType.Sleep && stat.StatusType != StructsAndEnums.StatusType.LuckUp)
-            {
-                for (int i = 0; i < list.Count; i++)
-                {
-                    if ((int)list[i].StatusType + (int)stat.StatusType == 11)
-                    {
-                        list.RemoveAt(i);
-                    }
-                }
-            }
-        }
-        list.Add(stat);
-        return list;
-    }
-
     private void BattleVictory()
     {
-        //reset cast cooldowns
-        //copy player stats to CharacterDetails.cs
+        for (int i = 0; i < CharacterPartySize; i++)
+        {
+            StatusHandler.Reset(ref CharacterParty[i].StatusList);
+        }
+
         //disable battle screen
     }
 
-    private void TestingFunction()
+    private void BattleDefeat()
     {
-        if (Input.GetKeyDown(KeyCode.Q))
+
+    }
+
+
+    private int CalculateDamage(int Defence, int Damage, int Luck)
+    {
+        if (Luck > 0)
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.AttackUp, 1));
+            float Randomiser = Random.Range(0f, 100f);
+            if (Luck > Randomiser)
+            {
+                Defence = 0;
+            }
         }
-        if (Input.GetKeyDown(KeyCode.W))
+        return Mathf.Max(Damage-Defence, 0);
+    }
+
+    private void AttackTarget(ref int Health, int Damage) //needs reworking to include mode up
+    {   
+        Health = Mathf.Max(Health-Damage, 0);
+    }
+
+    private void HealTarget(ref int Health, int MaxHealth, int HealValue)
+    {
+        Health = Mathf.Max(Health+HealValue, MaxHealth);
+    }
+
+    private void FortifyTarget(ref List<Defence> DefenceBuffList, Defence NewDefenceBoost)
+    {
+        DefenceBuffList.Add(NewDefenceBoost);
+    }
+
+    private void FortifyDecrease(ref List<Defence> DefenceBuffList)
+    {
+        for (int i = 0; i < DefenceBuffList.Count; i++)
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.AttackDown, 1));
+            if (DefenceBuffList[i].DefenceLength <= 1)
+            {
+                DefenceBuffList.RemoveAt(i);
+                i--;
+            }
+            else
+            {
+                Defence Temp = DefenceBuffList[i];
+                Temp.DefenceLength--;
+                DefenceBuffList[i] = Temp; 
+            }
         }
-        if (Input.GetKeyDown(KeyCode.E))
+    }
+
+    private void CastCooldown(ref CastCommand Cast)
+    {
+        Cast.CurrentCooldown = Cast.MaxCooldown;
+    }
+
+    private void CastCooldownDecrease(ref CastCommand[] Casts)
+    {
+        for (int i = 0; i < Casts.Length; i++)
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.DefenceUp, 1));
+            if (Casts[i].CurrentCooldown > 0)
+            {
+                Casts[i].CurrentCooldown--;
+            }
         }
-        if (Input.GetKeyDown(KeyCode.R))
+    }
+
+    private void CastMenuToggle(bool State)
+    {
+        CastMenu.SetActive(State);
+        CastDisplays.gameObject.SetActive(State);
+    }
+
+    private void ItemMenuToggle(bool State)
+    {
+        ItemMenu.SetActive(State);
+        ItemDisplays.gameObject.SetActive(State);
+    }
+
+    private void AddModeUp(ref int CurrentModeUp, ref List<Status> StatusList, int TotalDamage)
+    {
+        float ModeMultiplier = 1;
+        if (StatusHandler.Check(ref StatusList, StatusType.DefenceUp))
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.DefenceDown, 1));
+            ModeMultiplier += GameController_.ModeModifier;
         }
-        if (Input.GetKeyDown(KeyCode.T))
+        else if (StatusHandler.Check(ref StatusList, StatusType.DefenceDown))
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.Sleep, 1));
+            ModeMultiplier -= GameController_.ModeModifier;
         }
-        if (Input.GetKeyDown(KeyCode.Y))
+        CurrentModeUp += (int)(TotalDamage*ModeMultiplier);
+    }
+
+    private void PostActionInfliction(ref List<Status> StatusList, ref int Health)
+    {
+        if (StatusHandler.Check(ref StatusList, StatusType.Dying))
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.LuckUp, 1));
+            Health -= Mathf.Max(1, (int)(Health*GameController_.HealthModifier));
         }
-        if (Input.GetKeyDown(KeyCode.U))
+        else if (StatusHandler.Check(ref StatusList, StatusType.Regenerate))
         {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.Regenerate, 1));
-        }
-        if (Input.GetKeyDown(KeyCode.I))
-        {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.Dying, 1));
-        }
-        if (Input.GetKeyDown(KeyCode.O))
-        {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.ModeBoost, 1));
-        }
-        if (Input.GetKeyDown(KeyCode.P))
-        {
-            CharacterParty[0].Status = AddStatus(CharacterParty[0].Status, new StructsAndEnums.Status(StructsAndEnums.StatusType.ModeHinder, 1));
+            Health += Mathf.Max(1, (int)(Health*GameController_.HealthModifier));
         }
     }
 }
